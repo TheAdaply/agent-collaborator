@@ -112,7 +112,10 @@ func (r *Router) Statuses(ctx context.Context) []Status {
 		} else {
 			s.Detail = d.Detect + " not on PATH"
 		}
-		if c, ok := r.cooling(n); ok {
+		r.mu.Lock()
+		c, cooling := r.cool[n]
+		r.mu.Unlock()
+		if cooling && time.Now().Before(c.Until) {
 			s.CoolUntil, s.Detail = c.Until, "out of usage: "+c.Reason
 		}
 		out = append(out, s)

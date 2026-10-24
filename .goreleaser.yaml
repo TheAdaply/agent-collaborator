@@ -1,0 +1,19 @@
+version: 2
+project_name: agent-collaborator
+builds:
+  - main: ./cmd/agent-collaborator
+    binary: agent-collaborator
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/TheAdaply/agent-collaborator/internal/node.Version={{.Version}}
+archives:
+  - formats: [tar.gz]
+    files:
+      - README.md
+      - LICENSE
+checksum:
+  name_template: checksums.txt

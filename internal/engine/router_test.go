@@ -239,3 +239,23 @@ func TestSilentFailureSaysWhy(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestStatusesDoesNotPersistExpiredCooldown(t *testing.T) {
+	r, state := setup(t, map[string]string{"a": "echo ready"}, "a")
+	r.setCooldown("a", time.Now().Add(-time.Hour), "expired")
+	before, err := os.ReadFile(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statuses := r.Statuses(context.Background())
+	if len(statuses) != 1 || !statuses[0].Ready || !statuses[0].CoolUntil.IsZero() {
+		t.Fatalf("unexpected statuses: %+v", statuses)
+	}
+	after, err := os.ReadFile(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Fatal("status probe changed persisted cooldowns")
+	}
+}

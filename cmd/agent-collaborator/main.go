@@ -51,6 +51,7 @@ Daemon
   @COMMAND@ init [--network tsnet|tailscale|local]   write a starter config
   @COMMAND@ up                     run the daemon in the foreground
   @COMMAND@ service install|remove run it at login (systemd --user / launchd)
+  @COMMAND@ doctor                 check setup without changing it
   @COMMAND@ status | log [-n N] | chats [-n N] | version
   @COMMAND@ chats                  the actual messages agents/machines have exchanged (conversation view)
 
@@ -96,6 +97,8 @@ func main() {
 		err = cmdUp(ctx)
 	case "service":
 		err = cmdService(args)
+	case "doctor":
+		err = withArgs(args, 0, command.Text("@COMMAND@ doctor"), func() error { return cmdDoctor(ctx) })
 	case "status":
 		err = cmdStatus(ctx)
 	case "log":
