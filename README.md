@@ -17,7 +17,12 @@ available; it cannot promise unlimited credit or uninterrupted execution.
 
 ## Quick start
 
-With Go 1.27.3 or newer:
+For installation without Go, choose the archive for your OS (Linux or macOS) and
+architecture (amd64 or arm64) from the [Releases page](https://github.com/TheAdaply/agent-collaborator/releases)
+when a release is available. Verify it against the release checksums, extract it, and place
+`agent-collaborator` in a directory on PATH.
+
+Alternatively, with Go 1.27.3 or newer:
 
 ```sh
 go install github.com/TheAdaply/agent-collaborator/cmd/agent-collaborator@latest
@@ -49,6 +54,7 @@ Use `agent-collaborator up` to run in the foreground instead. Service generation
 `agent-collaborator`.
 
 ```sh
+agent-collaborator doctor              # read-only setup checks; FAIL exits non-zero
 agent-collaborator who
 agent-collaborator ask desktop "run the GPU benchmarks"
 agent-collaborator ask desktop/conductor "status?"
@@ -110,7 +116,9 @@ mobile-friendly dashboard. It refreshes every 10 seconds and shows the last 30 l
 The dashboard is owner-only: the browser must be on Tailscale and identified as the daemon's owner.
 Team members and unidentified callers receive 403. It uses the existing tailnet listener with no
 external assets. Session working directories are omitted. Activity is local to the viewed machine;
-peer inventory uses the existing `who` fan-out. Conversations remain in Claude Remote Control.
+peer inventory uses the existing `who` fan-out. Both views show only machines that
+answer the Agent Collaborator inventory request; bare tailnet devices and unreachable
+peers are omitted, rather than inferred to be offline agents. Conversations remain in Claude Remote Control.
 
 ## Security
 
@@ -140,6 +148,8 @@ Early v0.1, targeting Linux and macOS. The suite covers routing with fake engine
 local two-daemon messaging, inbox/reply delivery, tmux delivery, offline queueing, MCP tools, and fleet
 visibility. Prior manual router testing included Claude Code. Real tailnet operation across two
 machines remains the next milestone; it has not yet been validated by these local tests.
+
+See [ROADMAP.md](ROADMAP.md) for planned work.
 
 Next: validate cross-machine tailnet operation and harden adapters and unattended workflows from
 real usage. The public module must be published before the `@latest` install command is available.

@@ -100,6 +100,13 @@ func Default() *Config {
 
 // Load reads the config file (if any) over the defaults.
 func Load() (*Config, error) {
+	return load(false)
+}
+
+// LoadReadOnly validates configuration without creating state directories.
+func LoadReadOnly() (*Config, error) { return load(true) }
+
+func load(readOnly bool) (*Config, error) {
 	c := Default()
 	c.Dir, c.StateDir = Dirs()
 	path := filepath.Join(c.Dir, "config.toml")
@@ -122,8 +129,10 @@ func Load() (*Config, error) {
 	if c.Network == Local && c.Listen == "" {
 		c.Listen = fmt.Sprintf("127.0.0.1:%d", c.Port)
 	}
-	if err := os.MkdirAll(c.StateDir, 0o700); err != nil {
-		return nil, err
+	if !readOnly {
+		if err := os.MkdirAll(c.StateDir, 0o700); err != nil {
+			return nil, err
+		}
 	}
 	return c, nil
 }

@@ -30,6 +30,7 @@ func (n *Node) controlAPI() http.Handler {
 	mux.HandleFunc("GET /v1/who", n.ctlWho)
 	mux.HandleFunc("GET /v1/fleet", n.ctlFleet)
 	mux.HandleFunc("GET /v1/status", n.ctlStatus)
+	mux.HandleFunc("GET /v1/doctor/network", n.ctlDoctorNetwork)
 	mux.HandleFunc("GET /v1/engines", n.ctlEngines)
 	mux.HandleFunc("POST /v1/engines/{name}/reset", n.ctlEngineReset)
 	mux.HandleFunc("GET /v1/log", n.ctlLog)
@@ -231,19 +232,15 @@ func (n *Node) fleetMachines(parent context.Context) []MachineInfo {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for _, p := range peers {
-		info := MachineInfo{Name: p.Name}
 		if !p.Online {
-			mu.Lock()
-			out = append(out, info)
-			mu.Unlock()
 			continue
 		}
 		wg.Add(1)
 		go func(p Peer) {
 			defer wg.Done()
 			info, err := n.peerWho(ctx, p.Name)
-			if err != nil {
-				info = MachineInfo{Name: p.Name, Error: err.Error()}
+			if err != nil || info.Name == "" || info.Version == "" {
+				return
 			}
 			mu.Lock()
 			out = append(out, info)

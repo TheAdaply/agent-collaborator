@@ -2,7 +2,9 @@ package node
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -73,5 +75,54 @@ func TestFleetOwnerOnly(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+type inventoryTransport struct{ Transport }
+
+func (inventoryTransport) Peers(context.Context) ([]Peer, error) {
+	return []Peer{{Name: "mac", Online: true}, {Name: "raw-mac", Online: false}, {Name: "phone", Online: true}}, nil
+}
+
+type inventoryRoundTripper struct{}
+
+func (inventoryRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Host != "mac" {
+		return nil, fmt.Errorf("no agent listening")
+	}
+	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"name":"mac","version":"test","online":true}`)), Header: make(http.Header)}, nil
+}
+
+func TestFleetOmitsBareTailnetDevices(t *testing.T) {
+	n := testNode(t)
+	setClaudeDir(t, t.TempDir())
+	n.tr = fleetTransport{Transport: inventoryTransport{n.tr}, login: "me@github"}
+	n.peers = &http.Client{Transport: inventoryRoundTripper{}}
+	for _, path := range []string{"/v1/who", "/v1/fleet"} {
+		rec := httptest.NewRecorder()
+		n.controlAPI().ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		body := rec.Body.String()
+		if rec.Code != 200 || !strings.Contains(body, `"name":"mac"`) || strings.Contains(body, "raw-mac") || strings.Contains(body, "phone") {
+			t.Fatalf("%s: %s", path, body)
+		}
+	}
+	rec := httptest.NewRecorder()
+	n.handleFleet(rec, httptest.NewRequest("GET", "/fleet", nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "mac") || strings.Contains(rec.Body.String(), "raw-mac") || strings.Contains(rec.Body.String(), "phone") {
+		t.Fatal("dashboard includes bare devices")
+	}
+}
+
+func TestDoctorNetworkUsesExistingTransport(t *testing.T) {
+	n := testNode(t)
+	n.tr = inventoryTransport{n.tr}
+	rec := httptest.NewRecorder()
+	n.controlAPI().ServeHTTP(rec, httptest.NewRequest("GET", "/v1/doctor/network", nil))
+	var health NetworkHealth
+	if err := json.Unmarshal(rec.Body.Bytes(), &health); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != 200 || !health.Joined || health.Peers != 3 || health.Machine != "here" {
+		t.Fatalf("unexpected health: %+v", health)
 	}
 }
