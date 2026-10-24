@@ -75,6 +75,9 @@ func New(cfg *config.Config) (*Node, error) {
 			MaxIdleConnsPerHost: 2,
 		},
 	}
+	if err := n.interruptTasks(); err != nil {
+		return nil, err
+	}
 	return n, nil
 }
 
@@ -224,9 +227,53 @@ func (n *Node) accept(ctx context.Context, m *proto.Message) msgResult {
 	if err != nil {
 		return fail("refused", err.Error())
 	}
+	task, created, err := n.st.CreateTask(store.Task{ID: m.ID, Kind: m.Kind, From: m.From, To: m.To, Body: m.Body, Trust: m.Trust})
+	if err != nil {
+		return fail("error", err.Error())
+	}
+	if !created {
+		if task.From != m.From || task.To != m.To || task.Kind != m.Kind || task.Trust != m.Trust {
+			return fail("refused", "task ID belongs to another message")
+		}
+		if (task.State == store.Reported || task.State == store.Failed || task.State == store.Interrupted) && m.Kind == proto.Ask {
+			body := task.ResultSnippet
+			if body == "" {
+				body = "Already handled: " + string(task.State)
+				if task.Error != "" {
+					body += ": " + task.Error
+				}
+			}
+			reply := &proto.Message{ID: proto.NewID(), Kind: proto.Reply, ReplyTo: task.ID, From: task.To, To: task.From, Body: body, Sent: time.Now()}
+			if reply.To.Machine() == n.cfg.Name {
+				if err := n.st.PutReply(reply); err != nil {
+					return fail("error", err.Error())
+				}
+			} else {
+				n.send(ctx, reply)
+			}
+		}
+		return fail("delivered", "duplicate task: "+string(task.State))
+	}
+	if err := n.st.TransitionTask(m.ID, store.Running, "", "", ""); err != nil {
+		return fail("error", err.Error())
+	}
+	finishDelivery := func(state, detail string) msgResult {
+		if state == "error" || m.Kind == proto.Tell {
+			next := store.Reported
+			problem := ""
+			if state == "error" {
+				next = store.Failed
+				problem = detail
+			}
+			if err := n.st.TransitionTask(m.ID, next, "", "", problem); err != nil {
+				return fail("error", err.Error())
+			}
+		}
+		return fail(state, detail)
+	}
 	if m.Kind == proto.Ask {
 		if err := n.st.PutPending(m); err != nil {
-			return fail("error", err.Error())
+			return finishDelivery("error", err.Error())
 		}
 	}
 	switch {
@@ -236,23 +283,29 @@ func (n *Node) accept(ctx context.Context, m *proto.Message) msgResult {
 		return fail("routing", "the router is running it on the first usable engine")
 	case sess.Deliver == "inbox":
 		if err := n.st.PutInbox(sess.Name, m); err != nil {
-			return fail("error", err.Error())
+			return finishDelivery("error", err.Error())
 		}
-		return fail("delivered", "in "+sess.Name+"'s inbox")
+		return finishDelivery("delivered", "in "+sess.Name+"'s inbox")
 	case strings.HasPrefix(sess.Deliver, "claude:"):
 		ref, _ := deliver.ClaudeRef(sess.Deliver)
 		if err := deliver.Claude(m, ref); err != nil {
 			// The socket may be gone or the session busy with tools: keep it for the inbox, and also
 			// type it into the terminal if we know one, so an idle session still sees it.
-			_ = n.st.PutInbox(sess.Name, m)
+			inboxErr := n.st.PutInbox(sess.Name, m)
 			if t, perr := deliver.ParseTmux(sess.Fallback); perr == nil {
 				if terr := deliver.Tmux(ctx, t, m, filepath.Join(n.cfg.StateDir, "spool")); terr == nil {
-					return fail("delivered", "push failed ("+err.Error()+"); typed into "+sess.Name)
+					if inboxErr != nil {
+						return finishDelivery("error", inboxErr.Error())
+					}
+					return finishDelivery("delivered", "push failed ("+err.Error()+"); typed into "+sess.Name)
 				}
 			}
-			return fail("delivered", "push failed ("+err.Error()+"); kept in "+sess.Name+"'s inbox")
+			if inboxErr != nil {
+				return finishDelivery("error", inboxErr.Error())
+			}
+			return finishDelivery("delivered", "push failed ("+err.Error()+"); kept in "+sess.Name+"'s inbox")
 		}
-		return fail("delivered", "pushed into Claude session "+sess.Name)
+		return finishDelivery("delivered", "pushed into Claude session "+sess.Name)
 	case strings.HasPrefix(sess.Deliver, "tmux:"):
 		t, err := deliver.ParseTmux(sess.Deliver)
 		if err == nil {
@@ -260,12 +313,14 @@ func (n *Node) accept(ctx context.Context, m *proto.Message) msgResult {
 		}
 		if err != nil {
 			// The session may be gone or busy: keep the message for it rather than lose it.
-			_ = n.st.PutInbox(sess.Name, m)
-			return fail("delivered", "typed delivery failed ("+err.Error()+"); kept in "+sess.Name+"'s inbox")
+			if inboxErr := n.st.PutInbox(sess.Name, m); inboxErr != nil {
+				return finishDelivery("error", inboxErr.Error())
+			}
+			return finishDelivery("delivered", "typed delivery failed ("+err.Error()+"); kept in "+sess.Name+"'s inbox")
 		}
-		return fail("delivered", "typed into "+sess.Name)
+		return finishDelivery("delivered", "typed into "+sess.Name)
 	}
-	return fail("error", "session "+sess.Name+" has unknown delivery "+sess.Deliver)
+	return finishDelivery("error", "session "+sess.Name+" has unknown delivery "+sess.Deliver)
 }
 
 // prune drops sessions whose process or terminal has gone, so who never lists dead ones and messages to
@@ -343,6 +398,17 @@ func (n *Node) route(m *proto.Message) {
 		body += "\n\n-- " + footer(n.cfg.Name, res)
 	}
 	n.st.Audit(store.AuditEntry{Dir: "in", ID: m.ID, Kind: m.Kind, From: m.From, To: m.To, Trust: m.Trust, Action: action, Detail: attemptsLine(res), Body: clip(m.Body)})
+	state, detail, engineName := store.Reported, "", ""
+	if err != nil {
+		state, detail = store.Failed, err.Error()
+	}
+	if res != nil {
+		engineName = res.Engine
+	}
+	if err := n.st.TransitionTask(m.ID, state, engineName, body, detail); err != nil {
+		n.logf("task %s: %v", m.ID, err)
+		return
+	}
 	if m.Kind != proto.Ask {
 		return
 	}
@@ -499,6 +565,11 @@ func (n *Node) post(ctx context.Context, m *proto.Message) (msgResult, error) {
 
 // reply answers a pending ask.
 func (n *Node) reply(ctx context.Context, askID, body string) (msgResult, error) {
+	if task, err := n.st.LoadTask(askID); err == nil && task.State == store.Running {
+		if err := n.st.TransitionTask(askID, store.Reported, "", body, ""); err != nil {
+			return msgResult{}, err
+		}
+	}
 	p, err := n.st.TakePending(askID)
 	if err != nil {
 		return msgResult{}, err
@@ -587,4 +658,22 @@ func (l *limiter) allow(key string) bool {
 	}
 	l.seen[key] = append(ts, time.Now())
 	return true
+}
+
+// interruptTasks surfaces unfinished work without replaying it.
+func (n *Node) interruptTasks() error {
+	tasks, err := n.st.ListTasks(0)
+	if err != nil {
+		return err
+	}
+	for _, task := range tasks {
+		if task.State != store.Running {
+			continue
+		}
+		if err := n.st.TransitionTask(task.ID, store.Interrupted, "", "", "daemon stopped while task was running"); err != nil {
+			return err
+		}
+		n.logf("task %s interrupted at startup", task.ID)
+	}
+	return nil
 }

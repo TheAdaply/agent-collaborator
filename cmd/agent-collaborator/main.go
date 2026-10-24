@@ -36,6 +36,7 @@ Talk
   @COMMAND@ reply ID "answer"      answer an ask you received ("-" reads the answer from stdin)
   @COMMAND@ who                    machines, their agent sessions and engines
   @COMMAND@ fleet                  fleet inventory and recent activity
+  @COMMAND@ tasks [-n N]           recent durable tasks
 
 Engines
   @COMMAND@ run "task"             run a task here on the first usable engine (no daemon needed)
@@ -75,6 +76,8 @@ func main() {
 		err = cmdReply(ctx, args)
 	case "fleet":
 		err = withArgs(args, 0, command.Text("@COMMAND@ fleet"), func() error { return cmdFleet(ctx) })
+	case "tasks":
+		err = cmdTasks(ctx, args)
 	case "who":
 		err = cmdWho(ctx)
 	case "run":
@@ -516,5 +519,30 @@ func cmdFleet(ctx context.Context) error {
 		return err
 	}
 	fmt.Print(node.FormatFleet(fleet))
+	return nil
+}
+
+func cmdTasks(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("tasks", flag.ExitOnError)
+	limit := fs.Int("n", 30, "recent tasks (maximum 100)")
+	if len(parse(fs, args)) != 0 {
+		return fmt.Errorf("usage: %s tasks [-n N]", command.Name())
+	}
+	var tasks []store.Task
+	if err := cli().Do(ctx, "GET", fmt.Sprintf("/v1/tasks?n=%d", *limit), nil, &tasks); err != nil {
+		return err
+	}
+	for _, task := range tasks {
+		detail := task.ResultSnippet
+		if task.Error != "" {
+			detail = task.Error
+		}
+		detail = strings.Join(strings.Fields(detail), " ")
+		r := []rune(detail)
+		if len(r) > 100 {
+			detail = string(r[:100]) + "…"
+		}
+		fmt.Printf("%s %-11s %s → %s  %s  %s ago  %s\n", task.ID, task.State, task.From, task.To, task.Engine, time.Since(task.CreatedAt).Round(time.Second), detail)
+	}
 	return nil
 }
