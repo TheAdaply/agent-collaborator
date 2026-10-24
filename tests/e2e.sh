@@ -4,6 +4,12 @@
 # Covers: router fallback, machine asks, session inbox + reply, tmux delivery, offline queueing,
 # MCP tools, engine cooldown reporting.   Usage: tests/e2e.sh [path/to/agent-collaborator]
 set -uo pipefail
+# Portable timeout: GNU `timeout`, Homebrew coreutils `gtimeout`, or a background-kill fallback (macOS
+# ships none by default).
+sh_timeout() { local s=$1; shift; ( "$@" ) & local p=$!; ( sleep "$s"; kill -TERM "$p" 2>/dev/null ) & local k=$!; wait "$p" 2>/dev/null; local r=$?; kill "$k" 2>/dev/null; wait "$k" 2>/dev/null; return "$r"; }
+if command -v timeout >/dev/null 2>&1; then TO=(timeout)
+elif command -v gtimeout >/dev/null 2>&1; then TO=(gtimeout)
+else TO=(sh_timeout); fi
 BIN=$(realpath "${1:-bin/agent-collaborator}")
 T=$(mktemp -d /tmp/agent-collaborator-e2e.XXXX)
 FAKE=$T/bin; mkdir -p "$FAKE"
@@ -55,7 +61,7 @@ run_limited = ["fake-codex", "-o", "{out}", "{prompt}"]
 output = "file"
 EOF
 }
-on() { local n=$1; shift; AC_HOME=$T/$n timeout 60 "$BIN" "$@"; }
+on() { local n=$1; shift; AC_HOME=$T/$n "${TO[@]}" 60 "$BIN" "$@"; }
 start() { AC_HOME=$T/$1 "$BIN" up >"$T/$1.log" 2>&1 & pids+=($!); for _ in $(seq 50); do [[ -S $T/$1/state/agent-collaborator.sock ]] && return; sleep 0.1; done; echo "daemon $1 did not start"; cat "$T/$1.log"; exit 1; }
 
 node alpha 17431 beta 17432
@@ -113,7 +119,7 @@ mcp_out=$(printf '%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
   '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"send","arguments":{"to":"beta","message":"summarize README"}}}' \
   '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"who","arguments":{}}}' \
-  | AC_HOME=$T/alpha timeout 30 "$BIN" mcp --agent claude --session tester)
+  | AC_HOME=$T/alpha "${TO[@]}" 30 "$BIN" mcp --agent claude --session tester)
 check "MCP initialize" '"serverInfo":\{"name":"Agent Collaborator"' "$mcp_out"
 check "MCP lists the tools" '"name":"check_inbox"' "$mcp_out"
 check "MCP send waits for and returns the answer" 'Answer from beta.*codex answer: summarize README' "$mcp_out"
