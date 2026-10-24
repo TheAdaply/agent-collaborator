@@ -167,10 +167,9 @@ func TestOwnerReachesDetectedLiveSession(t *testing.T) {
 	// Simulate a live Claude Code session that never registered with Agent Collaborator.
 	cdir := t.TempDir()
 	setClaudeDir(t, cdir)
-	sock := filepath.Join(cdir, "s.sock")
-	ln, _ := netListen(t, sock)
-	defer ln.Close()
-	writeClaudeSession(t, cdir, "my-ide", "sess-xyz", sock)
+	// target() only reads the session registry; it never dials the socket, so no listener is needed
+	// (creating one here broke on macOS, where the long temp path exceeds the unix-socket path limit).
+	writeClaudeSession(t, cdir, "my-ide", "sess-xyz", filepath.Join(cdir, "s.sock"))
 
 	// Owner may reach it by name even though it's unregistered.
 	s, err := n.target(msg(proto.Tell, "here/my-ide", proto.Owner, "me@github"))

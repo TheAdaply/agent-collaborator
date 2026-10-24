@@ -2,7 +2,6 @@ package node
 
 import (
 	"encoding/json"
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,9 +22,4 @@ func writeClaudeSession(t *testing.T, dir, name, id, sock string) {
 	if err := os.WriteFile(filepath.Join(dir, name+".json"), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func netListen(t *testing.T, sock string) (net.Listener, error) {
-	t.Helper()
-	return net.Listen("unix", sock)
 }
