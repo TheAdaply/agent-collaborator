@@ -1,0 +1,16 @@
+name = "codex"
+description = "OpenAI Codex CLI (ChatGPT subscription or API key)"
+detect = "codex"
+ready = ["codex", "login", "status"]
+run = ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check", "-C", "{dir}", "-o", "{out}", "{prompt}"]
+# Team requests: Codex's read-only sandbox.
+run_limited = ["codex", "exec", "--sandbox", "read-only", "--skip-git-repo-check", "-C", "{dir}", "-o", "{out}", "{prompt}"]
+output = "file"
+exhausted = [
+  '(?i)usage limit',
+  '(?i)hit your (\w+ )?limit',
+  '(?i)quota exceeded',
+  '(?i)insufficient_quota',
+  '\b429 Too Many Requests\b',
+]
+cooldown = "1h"

@@ -1,0 +1,18 @@
+name = "claude"
+description = "Claude Code (claude.ai subscription or API key)"
+detect = "claude"
+ready = ["claude", "auth", "status"]
+ready_match = '"loggedIn":\s*true'
+run = ["claude", "-p", "--dangerously-skip-permissions", "{prompt}"]
+# Team requests: read and search only.
+run_limited = ["claude", "-p", "--permission-mode", "dontAsk", "--allowedTools", "Read,Glob,Grep", "{prompt}"]
+output = "stdout"
+exhausted = [
+  'usage limit reached\|(?P<reset>\d{10})',
+  '(?i)usage limit',
+  '(?i)hit your (\w+ )?limit',
+  '(?i)credit balance is too low',
+  '(?i)rate_limit_error',
+  'API Error: 429',
+]
+cooldown = "1h"

@@ -1,0 +1,5 @@
+name = "aider"
+description = "aider in the task's directory"
+run = ["aider", "--yes-always", "--no-auto-commits", "--message", "{prompt}"]
+exhausted = ['(?i)rate ?limit', '(?i)quota', '\b429\b']
+cooldown = "30m"

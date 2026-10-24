@@ -1,0 +1,5 @@
+name = "opencode"
+description = "opencode (any provider it is configured for)"
+run = ["opencode", "run", "{prompt}"]
+exhausted = ['(?i)usage limit', '(?i)quota', '\b429\b']
+cooldown = "1h"

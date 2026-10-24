@@ -1,0 +1,13 @@
+name = "gemini"
+description = "Google Gemini CLI"
+detect = "gemini"
+run = ["gemini", "--yolo", "-p", "{prompt}"]
+run_limited = ["gemini", "--approval-mode", "default", "-p", "{prompt}"]
+output = "stdout"
+exhausted = [
+  '(?i)quota exceeded',
+  'RESOURCE_EXHAUSTED',
+  '(?i)usage limit',
+  '\b429\b',
+]
+cooldown = "1h"

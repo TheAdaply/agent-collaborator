@@ -1,0 +1,7 @@
+# A local model: never runs out of credit, so it makes a good last resort.
+# Answers only (no tools); pick a model you have pulled.
+name = "ollama"
+description = "local model via ollama (answers only, no tools)"
+run = ["ollama", "run", "qwen2.5-coder:7b", "{prompt}"]
+run_limited = ["ollama", "run", "qwen2.5-coder:7b", "{prompt}"]
+cooldown = "1m"
