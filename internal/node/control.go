@@ -33,6 +33,18 @@ func (n *Node) controlAPI() http.Handler {
 	mux.HandleFunc("GET /v1/doctor/network", n.ctlDoctorNetwork)
 	mux.HandleFunc("GET /v1/engines", n.ctlEngines)
 	mux.HandleFunc("POST /v1/engines/{name}/reset", n.ctlEngineReset)
+	mux.HandleFunc("GET /v1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		limit, _ := strconv.Atoi(r.URL.Query().Get("n"))
+		if limit <= 0 || limit > 100 {
+			limit = 30
+		}
+		tasks, err := n.st.ListTasks(limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, tasks)
+	})
 	mux.HandleFunc("GET /v1/log", n.ctlLog)
 	return mux
 }

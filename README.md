@@ -171,3 +171,30 @@ Go and tmux are needed for the full suite. See [CONTRIBUTING.md](CONTRIBUTING.md
 ## License
 
 [Apache-2.0](LICENSE).
+
+### Durable incoming tasks
+
+`agent-collaborator tasks [-n N]` lists recent incoming asks and tells through the
+owner-only control socket (`GET /v1/tasks?n=N`, default 30, maximum 100).
+Receipts live at `<state-dir>/tasks/<message-id>.json`, using the store's atomic
+JSON replacement. Bodies, results, and errors are clipped to 2,000 characters.
+
+Tasks move from `received` to `running` to `reported`, or to `failed` on an
+execution/delivery error. Session asks stay running until their session replies;
+session tells complete on delivery. Router tasks complete when the engine finishes.
+Attempts count dispatches; the engine field records the engine selected on completion.
+Terminal asks replay their stored snippet on duplicate delivery (or an already-handled
+notice); tells and in-flight duplicates do not dispatch again. Receipts are matched
+to sender, destination, kind, and trust before replay. Existing target access rules
+still apply. Reply messages continue to use the existing reply store.
+
+Startup marks leftover `running` receipts `interrupted` and logs their IDs. It does
+not re-execute them; a duplicate interrupted ask receives its recorded status.
+A crash before dispatch can leave a `received` receipt, which also blocks replay.
+Automatic recovery/resume, fleet dashboard integration, and retention/pruning are
+future work. Receipts are intentionally retained indefinitely to preserve deduplication;
+record contents and listing output are bounded, but task count grows with traffic.
+Removing receipts manually also removes their deduplication protection. A reported
+result is persisted before reply delivery, so retries can retrieve it after a crash
+between completion and delivery. This uses the existing offline reply queue; it does
+not guarantee exactly-once execution across external side effects and crashes.

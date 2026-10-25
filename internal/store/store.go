@@ -32,7 +32,7 @@ type Store struct {
 
 // Open creates the layout under dir.
 func Open(dir string) (*Store, error) {
-	for _, d := range []string{"inbox", "pending", "replies", "outbox", "asked"} {
+	for _, d := range []string{"inbox", "pending", "replies", "outbox", "asked", "tasks"} {
 		if err := os.MkdirAll(filepath.Join(dir, d), 0o700); err != nil {
 			return nil, err
 		}
@@ -266,6 +266,8 @@ func (s *Store) TakePending(id string) (*Pending, error) {
 
 // PutReply stores the reply to an ask this node sent.
 func (s *Store) PutReply(m *proto.Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := safe(m.ReplyTo); err != nil {
 		return err
 	}
