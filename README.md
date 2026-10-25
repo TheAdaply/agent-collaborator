@@ -9,6 +9,7 @@
 ## Demo
 
 ![Agent Collaborator demo](docs/demo.gif)
+▶ [Watch the full-quality video (MP4)](docs/demo.mp4)
 
 ## What it is
 
