@@ -6,6 +6,10 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.27.3-00ADD8?logo=go)](go.mod)
 
+## Demo
+
+![Agent Collaborator demo](docs/demo.gif)
+
 ## What it is
 
 Agent Collaborator is one small binary per machine. It connects AI coding agents over your own
